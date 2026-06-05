@@ -31,7 +31,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+float read_battery_voltage(ADC_HandleTypeDef* hadc);
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -57,6 +57,8 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define BATT_READ_Pin GPIO_PIN_0
+#define BATT_READ_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 
