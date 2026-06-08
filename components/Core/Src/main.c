@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "gps.h"
+#include "gps_logger.h"
 
 /* USER CODE END Includes */
 
@@ -112,6 +113,7 @@ int main(void)
   {
     Error_Handler();
   }
+  GPSLogger_Init();
 
   /* USER CODE END 2 */
 
@@ -124,6 +126,11 @@ int main(void)
     /* USER CODE BEGIN 3 */
     /* Parse any complete NMEA sentence saved by the UART callback. */
     GPS_Process();
+    if (GPS_HasNewData())
+    {
+      GPS gps_snapshot = GPS_GetData();
+      GPSLogger_Process(&gps_snapshot, HAL_GetTick());
+    }
   }
   /* USER CODE END 3 */
 }
