@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "gps.h"
 
 /* USER CODE END Includes */
 
@@ -105,6 +106,12 @@ int main(void)
   MX_USART1_UART_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+  /* Start GPS UART receive after USART1 is initialized. */
+  GPS_Init();
+  if (GPS_StartReceive(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
 
   /* USER CODE END 2 */
 
@@ -115,6 +122,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    /* Parse any complete NMEA sentence saved by the UART callback. */
+    GPS_Process();
   }
   /* USER CODE END 3 */
 }

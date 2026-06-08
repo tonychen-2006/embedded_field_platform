@@ -10,6 +10,8 @@
 
 static void split_commas(char *sentence, char *fields[], int max_fields);
 static float nmea_to_decimal_degrees(char *value, int degree_digits);
+static int nmea_checksum_is_valid(const char *sentence);
+static int nmea_hex_to_nibble(char value);
 
 static int parse_gga(GPS *gps, char *fields[]);
 static int parse_rmc(GPS *gps, char *fields[]);
@@ -18,6 +20,77 @@ static int parse_gll(GPS *gps, char *fields[]);
 static int parse_vtg(GPS *gps, char *fields[]);
 static int parse_gsv(GPS *gps, char *fields[]);
 
+/*
+ * Accepts a buffer that may contain one sentence or several sentences.
+ * Complete sentences are passed to nmea_parse_sentence().
+ */
+int nmea_parse(GPS *gps, uint8_t *buffer)
+{
+    char sentence[NMEA_LINE_SIZE];
+    uint16_t sentence_index = 0U;
+    int in_sentence = 0;
+    int parsed_sentences = 0;
+
+    if (gps == NULL || buffer == NULL)
+    {
+        return 0;
+    }
+
+    for (uint16_t i = 0U; buffer[i] != '\0'; i++)
+    {
+        char byte = (char)buffer[i];
+
+        if (byte == '$')
+        {
+            sentence_index = 0U;
+            sentence[sentence_index++] = byte;
+            in_sentence = 1;
+            continue;
+        }
+
+        if (in_sentence == 0)
+        {
+            continue;
+        }
+
+        if (byte == '\r')
+        {
+            continue;
+        }
+
+        if (byte == '\n')
+        {
+            sentence[sentence_index] = '\0';
+            parsed_sentences += nmea_parse_sentence(gps, sentence);
+            sentence_index = 0U;
+            in_sentence = 0;
+            continue;
+        }
+
+        if (sentence_index < (NMEA_LINE_SIZE - 1U))
+        {
+            sentence[sentence_index++] = byte;
+        }
+        else
+        {
+            sentence_index = 0U;
+            in_sentence = 0;
+        }
+    }
+
+    if (in_sentence != 0 && sentence_index > 0U)
+    {
+        sentence[sentence_index] = '\0';
+        parsed_sentences += nmea_parse_sentence(gps, sentence);
+    }
+
+    return parsed_sentences;
+}
+
+/*
+ * Parse one NMEA sentence. The sentence is copied locally because splitting on
+ * commas edits the string in place.
+ */
 int nmea_parse_sentence(GPS *gps, char *sentence)
 {
     char line[NMEA_LINE_SIZE];
@@ -33,14 +106,18 @@ int nmea_parse_sentence(GPS *gps, char *sentence)
         return 0;
     }
 
-    /*
-     * Copy sentence because split_commas() modifies the string.
-     */
+    if (nmea_checksum_is_valid(sentence) == 0)
+    {
+        gps->checksumErrors++;
+        return 0;
+    }
+
     strncpy(line, sentence, sizeof(line) - 1);
     line[sizeof(line) - 1] = '\0';
 
     /*
-     * Remove checksum part.
+     * Remove checksum text after validating it so split_commas() only sees
+     * payload fields.
      *
      * Before:
      * $GNGGA,123519,...*47
@@ -93,6 +170,69 @@ int nmea_parse_sentence(GPS *gps, char *sentence)
     }
 
     return 0;
+}
+
+static int nmea_checksum_is_valid(const char *sentence)
+{
+    const char *star;
+    const char *cursor;
+    uint8_t checksum = 0U;
+    int high_nibble;
+    int low_nibble;
+    uint8_t received_checksum;
+
+    if (sentence == NULL || sentence[0] != '$')
+    {
+        return 0;
+    }
+
+    star = strchr(sentence, '*');
+    if (star == NULL || star == (sentence + 1))
+    {
+        return 0;
+    }
+
+    high_nibble = nmea_hex_to_nibble(star[1]);
+    low_nibble = nmea_hex_to_nibble(star[2]);
+
+    if (high_nibble < 0 || low_nibble < 0)
+    {
+        return 0;
+    }
+
+    if (star[3] != '\0' && star[3] != '\r' && star[3] != '\n')
+    {
+        return 0;
+    }
+
+    for (cursor = sentence + 1; cursor < star; cursor++)
+    {
+        checksum ^= (uint8_t)(*cursor);
+    }
+
+    received_checksum = (uint8_t)((high_nibble << 4) | low_nibble);
+
+    return checksum == received_checksum;
+}
+
+static int nmea_hex_to_nibble(char value)
+{
+    if (value >= '0' && value <= '9')
+    {
+        return value - '0';
+    }
+
+    if (value >= 'A' && value <= 'F')
+    {
+        return value - 'A' + 10;
+    }
+
+    if (value >= 'a' && value <= 'f')
+    {
+        return value - 'a' + 10;
+    }
+
+    return -1;
 }
 
 static void split_commas(char *sentence, char *fields[], int max_fields)
