@@ -19,6 +19,10 @@ HAL_StatusTypeDef DS3231_ReadTime(I2C_HandleTypeDef *hi2c, RTC_Time *time) {
     uint8_t register_address = DS3231_TIME_REG;
     uint8_t data[7];
 
+    if (hi2c == NULL || time == NULL) {
+        return HAL_ERROR;
+    }
+
     HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(hi2c, DS3231_ADDR, &register_address, DS3231_REG_ADDR_SIZE, HAL_MAX_DELAY);
 
     if (status != HAL_OK) return status;
@@ -42,7 +46,7 @@ HAL_StatusTypeDef DS3231_SetTime(I2C_HandleTypeDef *hi2c, const RTC_Time *time) 
 
     uint8_t data[8];
 
-    if (time == NULL) {
+    if (hi2c == NULL || time == NULL) {
         return HAL_ERROR;
     }
 

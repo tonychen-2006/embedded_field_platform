@@ -41,11 +41,8 @@ int GPSLogger_FormatGpxPoint(char *buffer, uint16_t size, const GPS *gps);
 int GPSLogger_FormatGpxFooter(char *buffer, uint16_t size);
 
 /*
- * Storage hook.
- *
- * The default implementation in gps_logger.c is weak and returns
- * GPS_LOGGER_ERROR. When SD/FatFs is added, create one normal implementation
- * that appends text to filename.
+ * Storage hook. sd_card_spi.c provides the SD-card implementation. If the SD
+ * module is not linked, the weak fallback in gps_logger.c returns an error.
  */
 GPSLogger_Status GPSLogger_Write(const char *filename, const char *text);
 

@@ -21,8 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdbool.h>
+
 #include "gps.h"
-#include "gps_logger.h"
+#include "rtc_ds3231.h"
 
 /* USER CODE END Includes */
 
@@ -33,6 +35,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define TEST_PASS_BLINK_MS             1000U
+#define TEST_WAIT_BLINK_MS             250U
+#define TEST_FAIL_BLINK_MS             125U
+#define RTC_TEST_READ_INTERVAL_MS      1000U
 
 /* USER CODE END PD */
 
@@ -52,6 +58,18 @@ UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
+static volatile RTC_Time rtc_test_last_time;
+static volatile HAL_StatusTypeDef rtc_test_last_status;
+static volatile uint8_t rtc_test_passed;
+static volatile GPS gps_test_last_data;
+static volatile HAL_StatusTypeDef gps_test_start_status;
+static volatile uint8_t gps_test_started;
+static volatile uint8_t gps_test_has_bytes;
+static volatile uint8_t gps_test_has_parsed_sentence;
+static volatile uint8_t gps_test_has_fix;
+
+static uint32_t rtc_test_last_read_ms;
+static uint32_t test_led_last_toggle_ms;
 
 /* USER CODE END PV */
 
@@ -64,6 +82,11 @@ static void MX_I2C1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
+static bool RTC_TestRunOnce(void);
+static void RTC_TestPoll(uint32_t now_ms);
+static bool RTC_TestTimeMatches(const RTC_Time *expected, const RTC_Time *actual);
+static void GPS_TestCapture(void);
+static void Test_UpdateLed(uint32_t now_ms);
 
 /* USER CODE END PFP */
 
@@ -102,18 +125,13 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
-  MX_ADC1_Init();
   MX_I2C1_Init();
   MX_USART1_UART_Init();
-  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
-  /* Start GPS UART receive after USART1 is initialized. */
+  rtc_test_passed = RTC_TestRunOnce() ? 1U : 0U;
   GPS_Init();
-  if (GPS_StartReceive(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  GPSLogger_Init();
+  gps_test_start_status = GPS_StartReceive(&huart1);
+  gps_test_started = gps_test_start_status == HAL_OK ? 1U : 0U;
 
   /* USER CODE END 2 */
 
@@ -124,13 +142,12 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    /* Parse any complete NMEA sentence saved by the UART callback. */
+    uint32_t now_ms = HAL_GetTick();
+
+    RTC_TestPoll(now_ms);
     GPS_Process();
-    if (GPS_HasNewData())
-    {
-      GPS gps_snapshot = GPS_GetData();
-      GPSLogger_Process(&gps_snapshot, HAL_GetTick());
-    }
+    GPS_TestCapture();
+    Test_UpdateLed(now_ms);
   }
   /* USER CODE END 3 */
 }
@@ -382,6 +399,105 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+static bool RTC_TestRunOnce(void)
+{
+  const RTC_Time test_time = {
+      .seconds = 0U,
+      .minutes = 34U,
+      .hours = 12U,
+      .day = 2U,
+      .date = 8U,
+      .month = 6U,
+      .year = 26U,
+  };
+  RTC_Time read_time = {0};
+
+  rtc_test_last_status = DS3231_SetTime(&hi2c1, &test_time);
+  if (rtc_test_last_status != HAL_OK)
+  {
+    return false;
+  }
+
+  HAL_Delay(1500U);
+
+  rtc_test_last_status = DS3231_ReadTime(&hi2c1, &read_time);
+  rtc_test_last_time = read_time;
+  if (rtc_test_last_status != HAL_OK)
+  {
+    return false;
+  }
+
+  return RTC_TestTimeMatches(&test_time, &read_time);
+}
+
+static void RTC_TestPoll(uint32_t now_ms)
+{
+  RTC_Time read_time = {0};
+
+  if ((now_ms - rtc_test_last_read_ms) < RTC_TEST_READ_INTERVAL_MS)
+  {
+    return;
+  }
+
+  rtc_test_last_read_ms = now_ms;
+  rtc_test_last_status = DS3231_ReadTime(&hi2c1, &read_time);
+  rtc_test_last_time = read_time;
+  if (rtc_test_last_status != HAL_OK)
+  {
+    rtc_test_passed = 0U;
+  }
+}
+
+static bool RTC_TestTimeMatches(const RTC_Time *expected, const RTC_Time *actual)
+{
+  if (expected == NULL || actual == NULL)
+  {
+    return false;
+  }
+
+  return actual->year == expected->year &&
+         actual->month == expected->month &&
+         actual->date == expected->date &&
+         actual->day == expected->day &&
+         actual->hours == expected->hours &&
+         actual->minutes == expected->minutes &&
+         actual->seconds >= 1U &&
+         actual->seconds <= 3U;
+}
+
+static void GPS_TestCapture(void)
+{
+  GPS snapshot = GPS_GetData();
+
+  gps_test_last_data = snapshot;
+  gps_test_has_bytes = snapshot.bytesReceived > 0U ? 1U : 0U;
+  gps_test_has_parsed_sentence = snapshot.sentencesParsed > 0U ? 1U : 0U;
+  gps_test_has_fix = snapshot.fix != 0U ? 1U : 0U;
+}
+
+static void Test_UpdateLed(uint32_t now_ms)
+{
+  uint32_t interval_ms;
+
+  if (rtc_test_passed == 0U || gps_test_started == 0U)
+  {
+    interval_ms = TEST_FAIL_BLINK_MS;
+  }
+  else if (gps_test_has_parsed_sentence == 0U)
+  {
+    interval_ms = TEST_WAIT_BLINK_MS;
+  }
+  else
+  {
+    interval_ms = TEST_PASS_BLINK_MS;
+  }
+
+  if ((now_ms - test_led_last_toggle_ms) >= interval_ms)
+  {
+    test_led_last_toggle_ms = now_ms;
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+  }
+}
 
 /* USER CODE END 4 */
 
