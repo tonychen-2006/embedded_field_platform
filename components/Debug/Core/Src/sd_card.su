@@ -1,0 +1,9 @@
+../Core/Src/sd_card.c:17:15:SDCard_Init	24	static
+../Core/Src/sd_card.c:30:15:SDCard_AppendText	616	static
+../Core/Src/sd_card.c:93:6:SDCard_IsReady	4	static
+../Core/Src/sd_card.c:98:15:SDCard_GetLastStatus	4	static
+../Core/Src/sd_card.c:103:10:SDCard_GetWriteErrors	4	static
+../Core/Src/sd_card.c:108:18:GPSLogger_Write	16	static
+../Core/Src/sd_card.c:114:22:SDCard_FromFatFs	16	static
+../Core/Src/sd_card.c:135:13:SDCard_BuildPath	32	static
+../Core/Src/sd_card.c:159:13:SDCard_IsCsvHeader	40	static

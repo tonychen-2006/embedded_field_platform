@@ -1,0 +1,4 @@
+../Core/Src/rtc_ds3231.c:7:16:bcd_to_dec	16	static
+../Core/Src/rtc_ds3231.c:12:16:dec_to_bcd	16	static
+../Core/Src/rtc_ds3231.c:17:19:DS3231_ReadTime	40	static
+../Core/Src/rtc_ds3231.c:45:19:DS3231_SetTime	32	static

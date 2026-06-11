@@ -1,0 +1,12 @@
+../Core/Src/nmea_parse.c:27:5:nmea_parse	11
+../Core/Src/nmea_parse.c:94:5:nmea_parse_sentence	19
+../Core/Src/nmea_parse.c:175:12:nmea_checksum_is_valid	11
+../Core/Src/nmea_parse.c:218:12:nmea_hex_to_nibble	7
+../Core/Src/nmea_parse.c:238:13:split_commas	4
+../Core/Src/nmea_parse.c:260:14:nmea_to_decimal_degrees	3
+../Core/Src/nmea_parse.c:277:12:parse_gga	19
+../Core/Src/nmea_parse.c:326:12:parse_rmc	17
+../Core/Src/nmea_parse.c:370:12:parse_gsa	12
+../Core/Src/nmea_parse.c:408:12:parse_gll	13
+../Core/Src/nmea_parse.c:439:12:parse_vtg	7
+../Core/Src/nmea_parse.c:459:12:parse_gsv	6

@@ -40,12 +40,6 @@ void GPSLogger_Init(void)
     {
         GPSLogger_CountError();
     }
-
-    if (GPSLogger_FormatGpxHeader(text, sizeof(text)) < 0 ||
-        GPSLogger_Write(GPS_LOGGER_GPX_FILENAME, text) != GPS_LOGGER_OK)
-    {
-        GPSLogger_CountError();
-    }
 }
 
 void GPSLogger_Process(const GPS *gps, uint32_t now_ms)
@@ -89,27 +83,11 @@ GPSLogger_Status GPSLogger_LogNow(const GPS *gps)
         status = GPS_LOGGER_ERROR;
     }
 
-    if (GPSLogger_FormatGpxPoint(text, sizeof(text), gps) < 0 ||
-        GPSLogger_Write(GPS_LOGGER_GPX_FILENAME, text) != GPS_LOGGER_OK)
-    {
-        GPSLogger_CountError();
-        status = GPS_LOGGER_ERROR;
-    }
-
     return status;
 }
 
 GPSLogger_Status GPSLogger_Close(void)
 {
-    char text[GPS_LOGGER_TEXT_BUFFER_SIZE];
-
-    if (GPSLogger_FormatGpxFooter(text, sizeof(text)) < 0 ||
-        GPSLogger_Write(GPS_LOGGER_GPX_FILENAME, text) != GPS_LOGGER_OK)
-    {
-        GPSLogger_CountError();
-        return GPS_LOGGER_ERROR;
-    }
-
     return GPS_LOGGER_OK;
 }
 

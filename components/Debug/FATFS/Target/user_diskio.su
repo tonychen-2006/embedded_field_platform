@@ -1,0 +1,14 @@
+../FATFS/Target/user_diskio.c:76:16:SD_SPI	32	static
+../FATFS/Target/user_diskio.c:84:13:SD_Select	8	static
+../FATFS/Target/user_diskio.c:89:13:SD_Deselect	8	static
+../FATFS/Target/user_diskio.c:95:13:SD_WaitReady	24	static
+../FATFS/Target/user_diskio.c:110:16:SD_Command	24	static
+../FATFS/Target/user_diskio.c:141:16:SD_AppCommand	24	static
+../FATFS/Target/user_diskio.c:155:13:SD_InitCard	32	static
+../FATFS/Target/user_diskio.c:240:13:SD_ReadSingleBlock	40	static
+../FATFS/Target/user_diskio.c:273:13:SD_WriteSingleBlock	32	static
+../FATFS/Target/user_diskio.c:343:9:USER_initialize	16	static
+../FATFS/Target/user_diskio.c:363:9:USER_status	16	static
+../FATFS/Target/user_diskio.c:381:9:USER_read	32	static
+../FATFS/Target/user_diskio.c:420:9:USER_write	32	static
+../FATFS/Target/user_diskio.c:459:9:USER_ioctl	16	static

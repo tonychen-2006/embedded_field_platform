@@ -18,13 +18,16 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fatfs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdbool.h>
 
 #include "gps.h"
+#include "gps_logger.h"
 #include "rtc_ds3231.h"
+#include "sd_card.h"
 
 /* USER CODE END Includes */
 
@@ -67,6 +70,10 @@ static volatile uint8_t gps_test_started;
 static volatile uint8_t gps_test_has_bytes;
 static volatile uint8_t gps_test_has_parsed_sentence;
 static volatile uint8_t gps_test_has_fix;
+static volatile SDCard_Status sd_card_test_status;
+static volatile uint8_t sd_card_test_ready;
+static volatile uint32_t sd_card_test_write_errors;
+static volatile uint32_t gps_logger_test_write_errors;
 
 static uint32_t rtc_test_last_read_ms;
 static uint32_t test_led_last_toggle_ms;
@@ -85,7 +92,7 @@ static void MX_SPI1_Init(void);
 static bool RTC_TestRunOnce(void);
 static void RTC_TestPoll(uint32_t now_ms);
 static bool RTC_TestTimeMatches(const RTC_Time *expected, const RTC_Time *actual);
-static void GPS_TestCapture(void);
+static void GPS_TestCapture(const GPS *snapshot);
 static void Test_UpdateLed(uint32_t now_ms);
 
 /* USER CODE END PFP */
@@ -129,11 +136,18 @@ int main(void)
   MX_I2C1_Init();
   MX_USART1_UART_Init();
   MX_SPI1_Init();
+  MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
   rtc_test_passed = RTC_TestRunOnce() ? 1U : 0U;
   GPS_Init();
   gps_test_start_status = GPS_StartReceive(&huart1);
   gps_test_started = gps_test_start_status == HAL_OK ? 1U : 0U;
+  sd_card_test_status = SDCard_Init(&hspi1);
+  sd_card_test_ready = sd_card_test_status == SD_CARD_OK ? 1U : 0U;
+  if (sd_card_test_ready != 0U)
+  {
+    GPSLogger_Init();
+  }
 
   /* USER CODE END 2 */
 
@@ -148,7 +162,22 @@ int main(void)
 
     RTC_TestPoll(now_ms);
     GPS_Process();
-    GPS_TestCapture();
+    GPS_TestCapture(GPS_GetDataPtr());
+    if (GPS_HasNewData())
+    {
+      GPS snapshot = GPS_GetData();
+
+      GPS_TestCapture(&snapshot);
+      if (sd_card_test_ready != 0U)
+      {
+        GPSLogger_Process(&snapshot, now_ms);
+      }
+    }
+
+    sd_card_test_status = SDCard_GetLastStatus();
+    sd_card_test_ready = SDCard_IsReady() ? 1U : 0U;
+    sd_card_test_write_errors = SDCard_GetWriteErrors();
+    gps_logger_test_write_errors = GPSLogger_GetWriteErrors();
     Test_UpdateLed(now_ms);
   }
   /* USER CODE END 3 */
@@ -388,12 +417,22 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SD_CS_Pin */
+  GPIO_InitStruct.Pin = SD_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(SD_CS_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -467,21 +506,24 @@ static bool RTC_TestTimeMatches(const RTC_Time *expected, const RTC_Time *actual
          actual->seconds <= 3U;
 }
 
-static void GPS_TestCapture(void)
+static void GPS_TestCapture(const GPS *snapshot)
 {
-  GPS snapshot = GPS_GetData();
+  if (snapshot == NULL)
+  {
+    return;
+  }
 
-  gps_test_last_data = snapshot;
-  gps_test_has_bytes = snapshot.bytesReceived > 0U ? 1U : 0U;
-  gps_test_has_parsed_sentence = snapshot.sentencesParsed > 0U ? 1U : 0U;
-  gps_test_has_fix = snapshot.fix != 0U ? 1U : 0U;
+  gps_test_last_data = *snapshot;
+  gps_test_has_bytes = snapshot->bytesReceived > 0U ? 1U : 0U;
+  gps_test_has_parsed_sentence = snapshot->sentencesParsed > 0U ? 1U : 0U;
+  gps_test_has_fix = snapshot->fix != 0U ? 1U : 0U;
 }
 
 static void Test_UpdateLed(uint32_t now_ms)
 {
   uint32_t interval_ms;
 
-  if (rtc_test_passed == 0U || gps_test_started == 0U)
+  if (rtc_test_passed == 0U || gps_test_started == 0U || sd_card_test_ready == 0U)
   {
     interval_ms = TEST_FAIL_BLINK_MS;
   }

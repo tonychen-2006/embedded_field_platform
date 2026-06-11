@@ -59,6 +59,8 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define BATT_READ_Pin GPIO_PIN_0
 #define BATT_READ_GPIO_Port GPIOA
+#define SD_CS_Pin GPIO_PIN_4
+#define SD_CS_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 
