@@ -17,6 +17,7 @@ typedef enum
 
 SDCard_Status SDCard_Init(SPI_HandleTypeDef *hspi);
 SDCard_Status SDCard_AppendText(const char *filename, const char *text);
+SDCard_Status SDCard_RewriteText(const char *filename, const char *text);
 
 bool SDCard_IsReady(void);
 SDCard_Status SDCard_GetLastStatus(void);

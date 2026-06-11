@@ -40,6 +40,11 @@ typedef struct
     uint32_t sentencesDropped;
     uint32_t overflowErrors;
     uint32_t receiveErrors;
+    uint32_t uartOverrunErrors;
+    uint32_t uartFramingErrors;
+    uint32_t uartNoiseErrors;
+    uint32_t uartParityErrors;
+    uint32_t lastUartErrorCode;
     uint32_t checksumErrors;
 } GPS;
 

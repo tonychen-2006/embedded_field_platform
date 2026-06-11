@@ -149,12 +149,34 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
+    uint32_t error_code;
+
     if (huart != gps_uart)
     {
         return;
     }
 
+    error_code = huart->ErrorCode;
     gps_data.receiveErrors++;
+    gps_data.lastUartErrorCode = error_code;
+
+    if ((error_code & HAL_UART_ERROR_ORE) != 0U)
+    {
+        gps_data.uartOverrunErrors++;
+    }
+    if ((error_code & HAL_UART_ERROR_FE) != 0U)
+    {
+        gps_data.uartFramingErrors++;
+    }
+    if ((error_code & HAL_UART_ERROR_NE) != 0U)
+    {
+        gps_data.uartNoiseErrors++;
+    }
+    if ((error_code & HAL_UART_ERROR_PE) != 0U)
+    {
+        gps_data.uartParityErrors++;
+    }
+
     (void)GPS_RestartReceive();
 }
 

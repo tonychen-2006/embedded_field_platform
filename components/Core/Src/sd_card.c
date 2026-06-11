@@ -90,6 +90,59 @@ SDCard_Status SDCard_AppendText(const char *filename, const char *text)
     return sd_last_status;
 }
 
+SDCard_Status SDCard_RewriteText(const char *filename, const char *text)
+{
+    FIL file;
+    char path[24];
+    FRESULT result;
+    UINT bytes_written = 0U;
+    UINT length;
+
+    if (!sd_ready || filename == NULL || text == NULL)
+    {
+        sd_last_status = SD_CARD_NOT_READY;
+        sd_write_errors++;
+        return sd_last_status;
+    }
+
+    length = (UINT)strlen(text);
+
+    if (!SDCard_BuildPath(path, sizeof(path), filename))
+    {
+        sd_last_status = SD_CARD_ERROR;
+        sd_write_errors++;
+        return sd_last_status;
+    }
+
+    result = f_open(&file, path, FA_CREATE_ALWAYS | FA_WRITE);
+    if (result != FR_OK)
+    {
+        sd_last_status = SDCard_FromFatFs(result);
+        sd_write_errors++;
+        return sd_last_status;
+    }
+
+    if (length > 0U)
+    {
+        result = f_write(&file, text, length, &bytes_written);
+        if (result == FR_OK && bytes_written == length)
+        {
+            result = f_sync(&file);
+        }
+    }
+
+    (void)f_close(&file);
+
+    sd_last_status = SDCard_FromFatFs(result);
+    if (sd_last_status != SD_CARD_OK || bytes_written != length)
+    {
+        sd_last_status = SD_CARD_ERROR;
+        sd_write_errors++;
+    }
+
+    return sd_last_status;
+}
+
 bool SDCard_IsReady(void)
 {
     return sd_ready;
@@ -109,6 +162,12 @@ GPSLogger_Status GPSLogger_Write(const char *filename, const char *text)
 {
     return SDCard_AppendText(filename, text) == SD_CARD_OK ? GPS_LOGGER_OK
                                                            : GPS_LOGGER_ERROR;
+}
+
+GPSLogger_Status GPSLogger_Rewrite(const char *filename, const char *text)
+{
+    return SDCard_RewriteText(filename, text) == SD_CARD_OK ? GPS_LOGGER_OK
+                                                            : GPS_LOGGER_ERROR;
 }
 
 static SDCard_Status SDCard_FromFatFs(FRESULT result)

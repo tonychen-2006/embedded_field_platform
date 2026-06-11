@@ -11,9 +11,13 @@
 
 static bool gps_logger_started;
 static bool gps_logger_has_logged;
+static bool gps_logger_gpx_requested;
+static bool gps_logger_gpx_active;
+static uint32_t gps_logger_gpx_start_ms;
 static uint32_t gps_logger_last_log_ms;
 static uint32_t gps_logger_write_errors;
 
+static GPSLogger_Status GPSLogger_StartGpx(uint32_t now_ms);
 static bool GPSLogger_HasFix(const GPS *gps);
 static void GPSLogger_CountError(void);
 static int GPSLogger_CheckLength(int length, uint16_t size);
@@ -32,6 +36,9 @@ void GPSLogger_Init(void)
 
     gps_logger_started = true;
     gps_logger_has_logged = false;
+    gps_logger_gpx_requested = false;
+    gps_logger_gpx_active = false;
+    gps_logger_gpx_start_ms = 0U;
     gps_logger_last_log_ms = 0U;
     gps_logger_write_errors = 0U;
 
@@ -64,6 +71,49 @@ void GPSLogger_Process(const GPS *gps, uint32_t now_ms)
 
     gps_logger_last_log_ms = now_ms;
     gps_logger_has_logged = true;
+
+    GPSLogger_Tick(now_ms);
+}
+
+GPSLogger_Status GPSLogger_SetGpxEnabled(bool enabled, uint32_t now_ms)
+{
+    if (!gps_logger_started)
+    {
+        GPSLogger_Init();
+    }
+
+    if (enabled == gps_logger_gpx_requested)
+    {
+        return GPS_LOGGER_OK;
+    }
+
+    gps_logger_gpx_requested = enabled;
+
+    if (enabled)
+    {
+        GPSLogger_Status status = GPSLogger_StartGpx(now_ms);
+        if (status != GPS_LOGGER_OK)
+        {
+            gps_logger_gpx_requested = false;
+        }
+        return status;
+    }
+
+    return GPSLogger_Close();
+}
+
+void GPSLogger_Tick(uint32_t now_ms)
+{
+    if (!gps_logger_started ||
+        !gps_logger_gpx_active)
+    {
+        return;
+    }
+
+    if ((now_ms - gps_logger_gpx_start_ms) >= GPS_LOGGER_GPX_CLOSE_MS)
+    {
+        (void)GPSLogger_Close();
+    }
 }
 
 GPSLogger_Status GPSLogger_LogNow(const GPS *gps)
@@ -83,17 +133,58 @@ GPSLogger_Status GPSLogger_LogNow(const GPS *gps)
         status = GPS_LOGGER_ERROR;
     }
 
+    if (gps_logger_gpx_active)
+    {
+        if (GPSLogger_FormatGpxPoint(text, sizeof(text), gps) < 0 ||
+            GPSLogger_Write(GPS_LOGGER_GPX_FILENAME, text) != GPS_LOGGER_OK)
+        {
+            GPSLogger_CountError();
+            status = GPS_LOGGER_ERROR;
+        }
+    }
+
     return status;
 }
 
 GPSLogger_Status GPSLogger_Close(void)
 {
+    char text[GPS_LOGGER_TEXT_BUFFER_SIZE];
+
+    if (!gps_logger_started)
+    {
+        GPSLogger_Init();
+    }
+
+    if (!gps_logger_gpx_active)
+    {
+        return GPS_LOGGER_OK;
+    }
+
+    if (GPSLogger_FormatGpxFooter(text, sizeof(text)) < 0 ||
+        GPSLogger_Write(GPS_LOGGER_GPX_FILENAME, text) != GPS_LOGGER_OK)
+    {
+        GPSLogger_CountError();
+        return GPS_LOGGER_ERROR;
+    }
+
+    gps_logger_gpx_active = false;
+
     return GPS_LOGGER_OK;
 }
 
 uint32_t GPSLogger_GetWriteErrors(void)
 {
     return gps_logger_write_errors;
+}
+
+bool GPSLogger_IsGpxEnabled(void)
+{
+    return gps_logger_gpx_requested;
+}
+
+bool GPSLogger_IsGpxClosed(void)
+{
+    return !gps_logger_gpx_active;
 }
 
 int GPSLogger_FormatCsvHeader(char *buffer, uint16_t size)
@@ -242,6 +333,33 @@ GPSLOGGER_WEAK GPSLogger_Status GPSLogger_Write(const char *filename,
     (void)text;
 
     return GPS_LOGGER_ERROR;
+}
+
+GPSLOGGER_WEAK GPSLogger_Status GPSLogger_Rewrite(const char *filename,
+                                                  const char *text)
+{
+    (void)filename;
+    (void)text;
+
+    return GPS_LOGGER_ERROR;
+}
+
+static GPSLogger_Status GPSLogger_StartGpx(uint32_t now_ms)
+{
+    char text[GPS_LOGGER_TEXT_BUFFER_SIZE];
+
+    if (GPSLogger_FormatGpxHeader(text, sizeof(text)) < 0 ||
+        GPSLogger_Rewrite(GPS_LOGGER_GPX_FILENAME, text) != GPS_LOGGER_OK)
+    {
+        GPSLogger_CountError();
+        gps_logger_gpx_active = false;
+        return GPS_LOGGER_ERROR;
+    }
+
+    gps_logger_gpx_start_ms = now_ms;
+    gps_logger_gpx_active = true;
+
+    return GPS_LOGGER_OK;
 }
 
 static bool GPSLogger_HasFix(const GPS *gps)

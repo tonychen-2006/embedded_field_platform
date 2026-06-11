@@ -1,0 +1,8 @@
+# STM32/CubeIDE generated build output
+components/Debug/
+
+# Local editor and OS noise
+.DS_Store
+*.swp
+*.swo
+

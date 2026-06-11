@@ -42,6 +42,7 @@
 #define TEST_WAIT_BLINK_MS             250U
 #define TEST_FAIL_BLINK_MS             125U
 #define RTC_TEST_READ_INTERVAL_MS      1000U
+#define GPX_EN_DEBOUNCE_MS            50U
 
 /* USER CODE END PD */
 
@@ -74,9 +75,14 @@ static volatile SDCard_Status sd_card_test_status;
 static volatile uint8_t sd_card_test_ready;
 static volatile uint32_t sd_card_test_write_errors;
 static volatile uint32_t gps_logger_test_write_errors;
+static volatile uint8_t gps_logger_test_gpx_enabled;
+static volatile uint8_t gps_logger_test_gpx_closed;
 
 static uint32_t rtc_test_last_read_ms;
 static uint32_t test_led_last_toggle_ms;
+static uint32_t gpx_en_last_change_ms;
+static uint8_t gpx_en_raw_state;
+static uint8_t gpx_en_stable_state;
 
 /* USER CODE END PV */
 
@@ -93,6 +99,7 @@ static bool RTC_TestRunOnce(void);
 static void RTC_TestPoll(uint32_t now_ms);
 static bool RTC_TestTimeMatches(const RTC_Time *expected, const RTC_Time *actual);
 static void GPS_TestCapture(const GPS *snapshot);
+static bool GPX_EnablePoll(uint32_t now_ms);
 static void Test_UpdateLed(uint32_t now_ms);
 
 /* USER CODE END PFP */
@@ -159,10 +166,15 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     uint32_t now_ms = HAL_GetTick();
+    bool gpx_enabled = GPX_EnablePoll(now_ms);
 
     RTC_TestPoll(now_ms);
     GPS_Process();
     GPS_TestCapture(GPS_GetDataPtr());
+    if (sd_card_test_ready != 0U)
+    {
+      (void)GPSLogger_SetGpxEnabled(gpx_enabled, now_ms);
+    }
     if (GPS_HasNewData())
     {
       GPS snapshot = GPS_GetData();
@@ -173,11 +185,17 @@ int main(void)
         GPSLogger_Process(&snapshot, now_ms);
       }
     }
+    if (sd_card_test_ready != 0U)
+    {
+      GPSLogger_Tick(now_ms);
+    }
 
     sd_card_test_status = SDCard_GetLastStatus();
     sd_card_test_ready = SDCard_IsReady() ? 1U : 0U;
     sd_card_test_write_errors = SDCard_GetWriteErrors();
     gps_logger_test_write_errors = GPSLogger_GetWriteErrors();
+    gps_logger_test_gpx_enabled = GPSLogger_IsGpxEnabled() ? 1U : 0U;
+    gps_logger_test_gpx_closed = GPSLogger_IsGpxClosed() ? 1U : 0U;
     Test_UpdateLed(now_ms);
   }
   /* USER CODE END 3 */
@@ -434,6 +452,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(SD_CS_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : GPX_EN_Pin */
+  GPIO_InitStruct.Pin = GPX_EN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPX_EN_GPIO_Port, &GPIO_InitStruct);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
@@ -517,6 +541,25 @@ static void GPS_TestCapture(const GPS *snapshot)
   gps_test_has_bytes = snapshot->bytesReceived > 0U ? 1U : 0U;
   gps_test_has_parsed_sentence = snapshot->sentencesParsed > 0U ? 1U : 0U;
   gps_test_has_fix = snapshot->fix != 0U ? 1U : 0U;
+}
+
+static bool GPX_EnablePoll(uint32_t now_ms)
+{
+  uint8_t raw_state = HAL_GPIO_ReadPin(GPX_EN_GPIO_Port, GPX_EN_Pin) == GPIO_PIN_SET ? 1U : 0U;
+
+  if (raw_state != gpx_en_raw_state)
+  {
+    gpx_en_raw_state = raw_state;
+    gpx_en_last_change_ms = now_ms;
+  }
+
+  if (raw_state != gpx_en_stable_state &&
+      (now_ms - gpx_en_last_change_ms) >= GPX_EN_DEBOUNCE_MS)
+  {
+    gpx_en_stable_state = raw_state;
+  }
+
+  return gpx_en_stable_state != 0U;
 }
 
 static void Test_UpdateLed(uint32_t now_ms)
